@@ -78,8 +78,9 @@ var retorno = [];
 
 var geracao = 1;
 
-const NUMERO_INDIVIDUOS = 400;
-const TOTAL_DE_GERACOES = 50;
+const NUMERO_INDIVIDUOS = 200;
+const TOTAL_DE_GERACOES = 500;
+const TOTAL_DE_ALUNOS = 70;
 
 /* GET home page. */
 router.get('/', function(req, res, next) {
@@ -96,15 +97,6 @@ router.get('/teste', function(req, res, next) {
     //  break;
     //}
   }
-  var index = populacao.individuos.findIndex(function(item, i, arr){
-    return (item.modulos[0] == 29 && item.modulos[1] == 7 && item.modulos[2] == 17
-      || item.modulos[0] == 29 && item.modulos[1] == 17 && item.modulos[2] == 7
-      || item.modulos[0] == 7 && item.modulos[1] == 29 && item.modulos[2] == 17
-      || item.modulos[0] == 7 && item.modulos[1] == 17 && item.modulos[2] == 29
-      || item.modulos[0] == 17 && item.modulos[1] == 29 && item.modulos[2] == 17
-      || item.modulos[0] == 17 && item.modulos[1] == 17 && item.modulos[2] == 29);
-  });
-  console.log('Index da boa: ' + index );
   res.status(200).send(populacao);
 });
 
@@ -113,31 +105,36 @@ function criaPopulacao(populacao){
   if(populacao){
     var limite = populacao.individuos.length - 1;
     novaPopulacao = clone(populacao);
-    /*
-    for (var i = 0; i < limite; i+= 2) {
-      crossOver(novaPopulacao.individuos[i], novaPopulacao.individuos[i+1]);
-    }
-    */
+    //Inicio a roleta para encontrar os pais e gerar os filhos
     var roleta = clone(novaPopulacao.individuos);
     var resultRoleta = [];
     do {
       ind1 = roleta.splice(random(roleta.length),1)[0];
       ind2 = roleta.splice(random(roleta.length),1)[0];
       crossOver(ind1, ind2);
+      //Mutação do filho 1
+      for (mod of ind1.modulos) {
+          if(Math.random() < 0.0007){
+            mod.id = random(30);
+          }
+      }
+      //Mutação do filho 2
+      for (mod of ind2.modulos) {
+          if(Math.random() < 0.0007){
+            mod.id = random(30);
+          }
+      }
       resultRoleta.push(ind1);
       resultRoleta.push(ind2);
     } while (roleta.length > 1);
     novaPopulacao.individuos = resultRoleta;
-
+    //Se gerou clone eu forço a mutação
     for (var i = 0; i < populacao.individuos.length; i++) {
       ind = populacao.individuos[i];
       do {
         for (mod of ind.modulos) {
-            if(Math.random() < 0.001){
-              //console.log('X-Men na área - olha a mutação ai meu povo!!!');
-              //console.log('Módulo antigo: ' + mod.id);
+            if(Math.random() < 0.01){
               mod.id = random(30);
-              //console.log('Módulo x-men: ' + mod.id);
             }
         }
       } while (verificaIndividuoDuplicado(ind, i,populacao.individuos));
@@ -150,8 +147,18 @@ function criaPopulacao(populacao){
     }
 
     for (ind of novaPopulacao.individuos) {
+      /*
       for (mod of ind.modulos) {
         alocaJovens(mod, ind)
+      }
+      */
+      for (var i = 0; i < 4; i++) {
+        for (mod of ind.modulos) {
+          alocaJovens(mod, ind, random(10)/10);
+        }
+      }
+      for (mod of ind.modulos) {
+        alocaJovens(mod, ind, null);
       }
     }
 
@@ -171,13 +178,20 @@ function criaPopulacao(populacao){
       for (var j = 0; j < 3; j++) {
           criaModulo(individuo);
       }
+      for (var j = 0; j < 4; j++) {
+        for (mod of individuo.modulos) {
+          alocaJovens(mod, individuo, random(10)/10);
+        }
+      }
+      for (mod of individuo.modulos) {
+        alocaJovens(mod, individuo, null);
+      }
       individuo.pontuacao = funcaoObjeto(individuo);
       novaPopulacao.individuos.push(individuo);
     }
     novaPopulacao.individuos.sort(function(a,b){
       return b.pontuacao - a.pontuacao
     });
-
   }
   geracao++;
   return novaPopulacao;
@@ -211,23 +225,24 @@ function criaModulo(individuo){
       break;
     }
   }
-  alocaJovens(modulo, individuo);
+  alocaJovens(modulo, individuo, 0.2);
   individuo.modulos.push(modulo);
 }
 
-function alocaJovens(modulo, individuo){
-  var limite = (modulo.sala.hasOwnProperty('qtde') ? modulo.sala.qtde : 70) -1;
-  var randAux = Math.random();
-  //if(randAux < 0.2){
-  //  limite = Math.floor(limite * (1 - randAux));
-  //}
-  for (var i = 1; i < 71; i++) {
-    var modAluno = eval('modAluno' + i);
-    if(modAluno[modulo.id] == 0 ){
-      if(!alunoNoIndividuo(individuo, i)){
-        modulo.alunos.push(i);
-        if(modulo.alunos.length > limite){
-          break;
+function alocaJovens(modulo, individuo, taxaReducao){
+  if(modulo.sala.qtde > modulo.alunos.length){
+    var limite = (modulo.sala.hasOwnProperty('qtde') ? modulo.sala.qtde - modulo.alunos.length : TOTAL_DE_ALUNOS) -1;
+    if(taxaReducao){
+      limite = Math.floor(limite * taxaReducao);
+    }
+    for (var i = 1; i <= TOTAL_DE_ALUNOS ; i++) {
+      var modAluno = eval('modAluno' + i);
+      if(modAluno[modulo.id] == 0 ){
+        if(!alunoNoIndividuo(individuo, i)){
+          modulo.alunos.push(i);
+          if(modulo.alunos.length > limite){
+            break;
+          }
         }
       }
     }
@@ -295,21 +310,28 @@ function verificaIndividuoDuplicado(individuo, indiceInd,individuos){
 function funcaoObjeto(individuo){
   var soma = 0;
   var modulos = [];
+  var tamanhoMedioDaSala = 0;
+  var qtdeMediaJovensNaSala = Math.floor(TOTAL_DE_ALUNOS/individuo.modulos.length);
+  var fatorDePesoSecundario = 0;
+  var qtdeMaiorSala = 0;
   for (mod of individuo.modulos) {
     soma += mod.alunos.length;
-    if(modulos.indexOf(mod.id)){
-      modulos.push(mod.id)
+    //if(modulos.indexOf(mod.id) == -1){
+    //  modulos.push(mod.id)
+    //}
+    fatorDePesoSecundario += Math.abs(qtdeMediaJovensNaSala - mod.alunos.length);
+    if(mod.sala.qtde > qtdeMaiorSala){
+      qtdeMaiorSala = mod.sala.qtde;
     }
   }
-  if(soma == 70){
+
+  if(soma == TOTAL_DE_ALUNOS){
     soma += 10;
   }
+
   soma += modulos.length;
-  var copia = clone(individuo.modulos);
-  copia.sort(function(a, b){
-    return a.alunos.length - b.alunos.length
-  });
-  soma += modulos.length + copia[0].alunos.length;
+  soma += Math.abs( qtdeMaiorSala - fatorDePesoSecundario ) / qtdeMaiorSala;
+
   return soma;
 }
 
