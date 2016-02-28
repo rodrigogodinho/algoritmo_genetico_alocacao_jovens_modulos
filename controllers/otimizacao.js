@@ -1,61 +1,114 @@
-var neo4j = require('node-neo4j');
-var db = new neo4j('http://neo4j:1234@localhost:7474');
+var neo4j = require('neo4j');
+var db = new neo4j.GraphDatabase('http://neo4j:1234@localhost:7474');
 
-var geracao = 1;
+var geracao = 0;
 
-const NUMERO_INDIVIDUOS = 400;
-const TOTAL_DE_GERACOES = 250;
+const NUMERO_INDIVIDUOS = 50;
+const TOTAL_DE_GERACOES = 10;
+
+var limitador = 0;
+var salas;
+var instrutores;
+var alunos;
+var modulos;
 
 exports.executa = function(req, res){
-  var query = 'MATCH (a:Aluno)-[faz:FAZ {concluiu:{concluiu}}]->(m:Modulo) ';
-  query += 'return a.cpf as alunos, collect(m.codigo) as modulos, size(collect(m)) as qtdeModulos ';
-  query += 'order by qtdeModulos, a.cpf limit {limite}';
-  var params = {concluiu: false, limite: 10 };
-  /*
-  db.cypherQuery( query, params, function (err, result) {
-      if (err) {
-        res.status(500).send(err);
-        return console.log(err);
-      }
-      console.log(result.data); // delivers an array of query results
-      var retorno = {};
+  var callBackInitEnv = function(){
+    log('Total de alunos: ' + alunos.length);
+    var populacao = criaPopulacao();
 
-      res.status(200).send(arrNeo4JToArrAlunos(result.data));
+    for (var i = 0; i < TOTAL_DE_GERACOES; i++) {
+      console.log('Hora: ' + Date());
+      console.log('geracao atual: ' + geracao + ' - pontuacao max: ' + populacao.individuos[0].pontuacao);
+      criaPopulacao(populacao);
     }
-  );
-  */
-  var moduloModel = require('./../models/modulo.js');
-  var modulos = moduloModel.getModulos(function(err,modulos){
-    if (err) {
-      res.status(500).send(err);
-      return console.log(err);
-    }    
-    res.status(200).send(modulos);
-  });
-  //res.status(200).send(modulos);
-  //res.status(200).send('Teste');
-  /*
-  var populacao = criaPopulacao();
-  for (var i = 0; i < TOTAL_DE_GERACOES; i++) {
-    console.log('geracao atual: ' + geracao + ' - pontuacao max: ' + populacao.individuos[0].pontuacao);
-    criaPopulacao(populacao);
-  }
-  res.status(200).send(populacao);
-  */
+
+    res.status(200).send(populacao);
+
+    /*
+    res.status(200).send({salas: salas,
+                          instrutores: instrutores,
+                          alunos: alunos,
+                          modulos: modulos,
+                          limitador: limitador
+                        });
+                        */
+  };
+  var callBackErr = function(err){
+    res.status(500).send(err);
+    return console.log(err);
+  };
+
+  initEnv(callBackInitEnv, callBackErr);
 }
 
-function arrNeo4JToArrAlunos(arr){
-  var alunos = []
-  for (item of arr) {
-    alunos.push({cpf: item[0], modulos:item[1]});
-  }
-  return alunos;
+function getSalas(callBack, callBackErr){
+  var salaModel = require('./../models/sala.js');
+  salaModel.getSalas(function(err,results){
+    if (err) {
+      return callBackErr(err);
+    }
+    callBack(results);
+  });
+}
+
+function getInstrutores(callBack, callBackErr){
+  var instrutorModel = require('./../models/instrutor.js');
+  instrutorModel.getInstrutores(function(err, results){
+    if (err) {
+      return callBackErr(err);
+    }
+    callBack(results);
+  });
+}
+
+function getAlunos(callBack, callBackErr){
+  var alunoModel = require('./../models/aluno.js');
+  alunoModel.getAlunos(null, function(err, results){
+    if (err) {
+      return callBackErr(err);
+    }
+    callBack(results);
+  });
+}
+
+function getModulos(callBack, callBackErr){
+  var moduloModel = require('./../models/modulo.js');
+  moduloModel.getModulos(null, function(err,results){
+    if (err) {
+      return callBackErr(err);
+    }
+    callBack(results);
+  });
+}
+
+function initEnv(callBack, callBackErr){
+  getSalas(function(resSalas){
+    salas = resSalas;
+    getInstrutores(function(resInstrutores){
+      instrutores = resInstrutores;
+      if(Array.isArray(instrutores) && Array.isArray(salas)){
+        if(salas.length > instrutores.length){
+          limitador = instrutores.length;
+        }else{
+          limitador = salas.length;
+        }
+        getModulos(function(resModulos){
+          modulos = resModulos;
+          getAlunos(function(resAlunos){
+            alunos = resAlunos;
+            callBack();
+          }, callBackErr);
+        }, callBackErr);
+      }
+    }, callBackErr);
+  }, callBackErr);
 }
 
 function criaPopulacao(populacao){
   var novaPopulacao = {individuos:[]};
   if(populacao){
-    var limite = populacao.individuos.length - 1;
+    //var limite = populacao.individuos.length - 1;
     novaPopulacao = clone(populacao);
     //Inicio a roleta para encontrar os pais e gerar os filhos
     var roleta = clone(novaPopulacao.individuos);
@@ -67,18 +120,22 @@ function criaPopulacao(populacao){
       //Mutação do filho 1
       for (mod of ind1.modulos) {
           if(Math.random() < 0.0007){
-            mod.id = random(30);
+            mod.objModulo = modulos[random(modulos.length)].modulo.properties;
           }
       }
       //Mutação do filho 2
       for (mod of ind2.modulos) {
           if(Math.random() < 0.0007){
-            mod.id = random(30);
+            mod.objModulo = modulos[random(modulos.length)].modulo.properties;
           }
       }
       resultRoleta.push(ind1);
       resultRoleta.push(ind2);
+
     } while (roleta.length > 1);
+    if(roleta.length == 1){
+      resultRoleta.push(roleta.pop());
+    }
     novaPopulacao.individuos = resultRoleta;
     //Se gerou clone eu forço a mutação
     for (var i = 0; i < populacao.individuos.length; i++) {
@@ -86,24 +143,17 @@ function criaPopulacao(populacao){
       do {
         for (mod of ind.modulos) {
             if(Math.random() < 0.01){
-              mod.id = random(30);
+              mod.objModulo = modulos[random(modulos.length)].modulo.properties;
             }
         }
-      } while (verificaIndividuoDuplicado(ind, i,populacao.individuos));
+      } while (verificaIndividuoDuplicado(ind, i, populacao.individuos));
     }
-
     for (ind of novaPopulacao.individuos) {
       for (mod of ind.modulos) {
         mod.alunos = [];
       }
     }
-
     for (ind of novaPopulacao.individuos) {
-      /*
-      for (mod of ind.modulos) {
-        alocaJovens(mod, ind)
-      }
-      */
       for (var i = 0; i < 4; i++) {
         for (mod of ind.modulos) {
           alocaJovens(mod, ind, random(10)/10);
@@ -113,7 +163,6 @@ function criaPopulacao(populacao){
         alocaJovens(mod, ind, null);
       }
     }
-
     for (ind of novaPopulacao.individuos) {
       ind.pontuacao = funcaoObjeto(ind);
       ind.geracao = geracao;
@@ -126,7 +175,7 @@ function criaPopulacao(populacao){
   }else{
     for (var i = 0; i < NUMERO_INDIVIDUOS; i++) {
       var individuo = {modulos: [], pontuacao: 0, geracao: geracao};
-      for (var j = 0; j < 3; j++) {
+      for (var j = 0; j < limitador; j++) {
           criaModulo(individuo);
       }
       for (var j = 0; j < 4; j++) {
@@ -149,18 +198,145 @@ function criaPopulacao(populacao){
 }
 
 function criaModulo(individuo){
-  var modulo = {id: 0, alunos:[], sala: {}};
-  var modId = random(30)//Math.floor((Math.random() * 30));
+  var modulo = {objModulo: {}, alunos:[], sala: {}};
+  var modSorteado = modulos[random(modulos.length)].modulo.properties;
   do {
-    modId = random(30)//Math.floor((Math.random() * 30));
-  } while (moduloNoIndividuo(individuo, modId));
-  modulo.id = modId;
-  for (var sala = 0; sala < salas.length; sala++) {
-    if(!salaNoIndividuo(individuo, salas[sala].id)){
-      modulo.sala = salas[sala];
+    modSorteado = modulos[random(modulos.length)].modulo.properties;
+  } while (moduloNoIndividuo(individuo, modulo));
+  modulo.objModulo = modSorteado;
+  for (var sala = 0; sala < limitador; sala++) {
+    if(!salaNoIndividuo(individuo, salas[sala].sala.properties)){
+      modulo.sala = salas[sala].sala.properties;
       break;
     }
   }
   alocaJovens(modulo, individuo, 0.2);
   individuo.modulos.push(modulo);
+}
+
+function moduloNoIndividuo(individuo, modulo){
+  for (var i = 0; i < individuo.modulos.length; i++) {
+    if(individuo.modulos[i].objModulo.codigo == modulo.codigo){
+      return true;
+    }
+  }
+  return false;
+}
+
+
+function alunoNoIndividuo(individuo, aluno){
+  if(individuo.modulos){
+    for (mod of individuo.modulos) {
+      if(mod.hasOwnProperty('alunos')){
+        for (al of mod.alunos) {
+          if(al.cpf == aluno.cpf){
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function salaNoIndividuo(individuo, sala){
+  if(individuo.modulos){
+    for (var i = 0; i < individuo.modulos.length; i++) {
+      if(individuo.modulos[i] && individuo.modulos[i].hasOwnProperty('sala')){
+        if(individuo.modulos[i].sala.codigo == sala.codigo){
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function alocaJovens(modulo, individuo, taxaReducao){
+  if(modulo.sala.quantidade > modulo.alunos.length){
+    var limite = (modulo.sala.quantidade - modulo.alunos.length) - 1;
+    if(taxaReducao){
+      limite = Math.floor(limite * taxaReducao);
+    }
+    for (aluno of alunos) {
+      if(aluno.modulos.findIndex(function(item, index, arr){
+          return item.properties.codigo == modulo.objModulo.codigo;
+        }) > -1){
+        if(!alunoNoIndividuo(individuo, aluno.aluno.properties)){
+          modulo.alunos.push(aluno.aluno.properties);
+          if(modulo.alunos.length > limite){
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
+function funcaoObjeto(individuo){
+  var soma = 0;
+  var tamanhoMedioDaSala = 0;
+  var qtdeMediaJovensNaSala = Math.floor(alunos.length/individuo.modulos.length);
+  var fatorDePesoSecundario = 0;
+  var qtdeMaiorSala = 0;
+  for (mod of individuo.modulos) {
+    soma += mod.alunos.length;
+    fatorDePesoSecundario += Math.abs(qtdeMediaJovensNaSala - mod.alunos.length);
+    if(mod.sala.quantidade > qtdeMaiorSala){
+      qtdeMaiorSala = mod.sala.quantidade;
+    }
+  }
+
+  if(soma == alunos.length){
+    soma += 10;
+  }
+  soma += Math.abs( qtdeMaiorSala - fatorDePesoSecundario ) / qtdeMaiorSala;
+  return soma;
+}
+
+
+function clone(cloned){
+  return JSON.parse(JSON.stringify(cloned));
+}
+
+function random(max){
+  return Math.floor((Math.random() * max))
+}
+
+function log(obj){
+  console.log(JSON.stringify(obj));
+}
+
+function verificaIndividuoDuplicado(individuo, indiceInd, individuos){
+  var indice = individuos.findIndex(function(item, ind, arr){
+    var ret = true;
+    if(ind == indiceInd){
+      ret = false;
+    }else{
+      for (var i = 0; i < item.modulos.length; i++) {
+        if(item.modulos[i].objModulo.codigo != individuo.modulos[i].objModulo.codigo){
+          ret = false;
+          break;
+        }
+      }
+    }
+
+    return ret;
+  });
+  return indice > -1
+}
+
+function crossOver(ind1, ind2){
+  var tam = (ind1.modulos.length > ind2.modulos.length ? ind2.modulos.length : ind1.modulos.length) - 1;
+  var modAux;
+  for (var i = 0; i < tam; i++) {
+    if(Math.random() > 0.35){
+      modAux = ind1.modulos[i];
+      ind1.modulos[i] = ind2.modulos[i];
+      ind2.modulos[i] = modAux;
+    }
+  }
+  modAux = ind1.modulos[tam];
+  ind1.modulos[tam] = ind2.modulos[tam];
+  ind2.modulos[tam] = modAux;
 }
