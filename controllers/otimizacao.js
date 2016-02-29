@@ -3,8 +3,8 @@ var db = new neo4j.GraphDatabase('http://neo4j:1234@localhost:7474');
 
 var geracao = 0;
 
-const NUMERO_INDIVIDUOS = 120;
-const TOTAL_DE_GERACOES = 1000;
+const NUMERO_INDIVIDUOS = 10;
+const TOTAL_DE_GERACOES = 20;
 
 var valoresDeMutacao = [0.007, 0.07, 0.3]
 var indiceDeMutacao = 0;
@@ -13,60 +13,64 @@ var salas;
 var instrutores;
 var alunos;
 var modulos;
+var alocouTodosJovens = false;
 
-exports.executa = function(req, res){
+var callBackInitEnv = function(callBack){
   indiceDeMutacao = 0;
   geracao = 0;
-  var callBackInitEnv = function(){
-    log('Total de alunos: ' + alunos.length);
-    console.log(getHora('Hora: '));
-    var populacao = criaPopulacao();
-    var contadorFatorMaximo = 0;
-    var fatorMaximo = populacao.individuos[0].pontuacao;
-    for (var i = 0; i < TOTAL_DE_GERACOES; i++) {
-      console.log(getHora('Hora: ') + ' - ' + 'geracao atual: ' + geracao + ' - pontuacao max: ' + populacao.individuos[0].pontuacao);
-      criaPopulacao(populacao);
-      if(populacao.individuos[0].pontuacao > fatorMaximo){
-        fatorMaximo = populacao.individuos[0].pontuacao;
-        contadorFatorMaximo = 0;
-        indiceDeMutacao = 0;
-      }else{
-        contadorFatorMaximo++;
-        switch (contadorFatorMaximo) {
-          case 10:
-            indiceDeMutacao = 1;
-            break;
-          case 20:
-            indiceDeMutacao = 2;
-            break;
-          default:
+  log('Total de alunos: ' + alunos.length);
+  console.log(getHora('Hora: '));
+  var populacao = criaPopulacao();
+  var contadorFatorMaximo = 0;
+  var fatorMaximo = populacao.individuos[0].pontuacao;
+  for (var i = 0; i < TOTAL_DE_GERACOES; i++) {
+    console.log(getHora('Hora: ') + ' - ' + 'geracao atual: ' + geracao + ' - pontuacao max: ' + populacao.individuos[0].pontuacao);
+    criaPopulacao(populacao);
+    if(populacao.individuos[0].pontuacao > fatorMaximo){
+      fatorMaximo = populacao.individuos[0].pontuacao;
+      contadorFatorMaximo = 0;
+      indiceDeMutacao = 0;
+    }else{
+      contadorFatorMaximo++;
+      switch (contadorFatorMaximo) {
+        case 10:
+          indiceDeMutacao = 1;
+          break;
+        case 20:
+          indiceDeMutacao = 2;
+          break;
+        default:
 
-        }
       }
-      if(contadorFatorMaximo == 30){
-        break;
-      }
-      console.log('contadorFatorMaximo: ' + contadorFatorMaximo);
-      console.log('indiceDeMutacao: ' + indiceDeMutacao);
     }
+    if(alocouTodosJovens && contadorFatorMaximo == 30){
+      break;
+    }
+    console.log('contadorFatorMaximo: ' + contadorFatorMaximo);
+    console.log('indiceDeMutacao: ' + indiceDeMutacao);
+  }
 
-    res.status(200).send(populacao);
+  //res.status(200).send(populacao.individuos.splice(0,4));
+  callBack(populacao)
 
-    /*
-    res.status(200).send({salas: salas,
-                          instrutores: instrutores,
-                          alunos: alunos,
-                          modulos: modulos,
-                          limitador: limitador
-                        });
-                        */
-  };
+  /*
+  res.status(200).send({salas: salas,
+                        instrutores: instrutores,
+                        alunos: alunos,
+                        modulos: modulos,
+                        limitador: limitador
+                      });
+                      */
+};
+
+exports.executa = function(req, res ){
+  indiceDeMutacao = 0;
+  geracao = 0;
   var callBackErr = function(err){
     res.status(500).send(err);
     return console.log(err);
   };
-
-  initEnv(callBackInitEnv, callBackErr);
+  initEnv(callBackInitEnv, callBackErr, res);
 }
 
 function getSalas(callBack, callBackErr){
@@ -109,7 +113,7 @@ function getModulos(callBack, callBackErr){
   });
 }
 
-function initEnv(callBack, callBackErr){
+function initEnv(callBack, callBackErr, res){
   getSalas(function(resSalas){
     salas = resSalas;
     getInstrutores(function(resInstrutores){
@@ -124,7 +128,9 @@ function initEnv(callBack, callBackErr){
           modulos = resModulos;
           getAlunos(function(resAlunos){
             alunos = resAlunos;
-            callBack();
+            callBack(function(populacao){
+              res.status(200).send(populacao.individuos.splice(0,4));
+            });
           }, callBackErr);
         }, callBackErr);
       }
@@ -319,6 +325,7 @@ function funcaoObjeto(individuo){
   }
 
   if(soma == alunos.length){
+    alocouTodosJovens = true;
     soma += 10;
   }
   soma += ( qtdeMaiorSala - fatorDePesoSecundario ) / qtdeMaiorSala;
