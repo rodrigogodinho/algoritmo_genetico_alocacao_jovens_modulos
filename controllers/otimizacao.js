@@ -4,7 +4,7 @@ var db = new neo4j.GraphDatabase('http://neo4j:1234@localhost:7474');
 var geracao = 0;
 
 const NUMERO_INDIVIDUOS = 10;
-const TOTAL_DE_GERACOES = 20;
+const TOTAL_DE_GERACOES = 5;
 
 var valoresDeMutacao = [0.007, 0.07, 0.3]
 var indiceDeMutacao = 0;
@@ -128,9 +128,15 @@ function initEnv(callBack, callBackErr, res){
           modulos = resModulos;
           getAlunos(function(resAlunos){
             alunos = resAlunos;
+            var pop = new Populacao(resAlunos, resModulos, resSalas, resInstrutores);
+            res.status(200).send(pop);
+
             callBack(function(populacao){
-              res.status(200).send(populacao.individuos.splice(0,4));
+              simulacao(populacao.individuos.splice(0,4), function(_dados){
+                res.status(200).send(_dados);
+              });
             });
+
           }, callBackErr);
         }, callBackErr);
       }
@@ -138,7 +144,7 @@ function initEnv(callBack, callBackErr, res){
   }, callBackErr);
 }
 
-function criaPopulacao(populacao){
+function criaPopulacao(populacao, modulos, alunos){
   var novaPopulacao = {individuos:[]};
   if(populacao){
     //var limite = populacao.individuos.length - 1;
@@ -382,4 +388,40 @@ function crossOver(ind1, ind2){
 function getHora(string){
     var d = new Date();
     return string + d.getHours() + ':' + d.getMinutes() + ':' + d.getSeconds() + ':' + d.getMilliseconds();
+}
+
+function simulacao(_populacao, callBack){
+  console.log(JSON.stringify(_populacao));
+  for (individuo of _populacao) {
+    var copiaAlunos = clone(alunos)
+    atualizaAlunos(copiaAlunos, individuo);
+    callBack(copiaAlunos);
+    break;
+  }
+}
+
+function atualizaAlunos(_alunos, _individuo){
+  for (mod of _individuo.modulos) {
+    for (al of mod.alunos) {
+      var indexAluno = _alunos.findIndex(function(el, i, arr){
+        return el.cpf == al.cpf;
+      });
+      if (indexAluno > -1){
+        var indexModAluno = _alunos[indexAluno].modulos.findIndex(function(el, i, arr){
+          return el.properties.codigo == mod.objModulo.codigo
+        });
+        if(indexModAluno > -1){
+          _alunos[indexAluno].modulos.splice(indexModAluno, 1);
+        }
+      }
+    }
+  }
+  _alunos;
+}
+
+var Populacao = function(alunos, modulos, salas, instrutores){
+  this.alunos = alunos;
+  this.modulos = modulos;
+  this.salas = salas;
+  this.instrutores = instrutores;
 }
